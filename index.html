@@ -78,6 +78,9 @@
 </head>
 <body class="min-h-screen w-full flex flex-col items-center justify-center p-4">
 
+    <!-- Invisible Honeypot Trap for Bots/Scrapers -->
+    <a href="#bot-trap" id="honeypot-trap" aria-hidden="true" tabindex="-1" style="position:absolute;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;overflow:hidden;">Verify Session</a>
+
     <main class="w-full max-w-sm square-box rounded-3xl p-6 sm:p-8 text-center flex flex-col items-center justify-center transition-all duration-300 relative overflow-hidden">
         
         <!-- Verified Community Badge -->
@@ -86,7 +89,7 @@
             <span>Official Community Channel</span>
         </div>
 
-        <!-- LOOTOFFERHUB Logo Artwork (Policy-Safe Version) -->
+        <!-- LOOTOFFERHUB Logo Artwork -->
         <div class="relative w-40 h-40 sm:w-44 sm:h-44 mb-4 rounded-2xl overflow-hidden border-2 border-amber-400/50 shadow-2xl bg-black flex items-center justify-center p-2">
             <svg viewBox="0 0 500 500" class="w-full h-full rounded-xl">
                 <defs>
@@ -147,7 +150,7 @@
         </div>
 
         <!-- Clear Channel Benefits -->
-        <div class="w-full bg-slate-900/75 rounded-2xl p-3.5 border border-slate-800/90 mb-5 text-left space-y-2">
+        <div class="w-full bg-slate-900/75 rounded-2xl p-3.5 border border-slate-800/90 mb-4 text-left space-y-2">
             <div class="flex items-center gap-2.5 text-xs text-slate-300 font-medium">
                 <i class="fa-solid fa-tags text-amber-400 w-4 text-center"></i>
                 <span>Exclusive Daily Deals & Price Drops</span>
@@ -162,7 +165,7 @@
             </div>
         </div>
 
-        <!-- Join Telegram CTA Button (User-Initiated Only) -->
+        <!-- Join Telegram CTA Button (Counts as Lead ONLY on genuine human click) -->
         <a 
             id="tg-join-btn"
             href="https://t.me/+37kTniHfbCQ1OGNl"
@@ -173,8 +176,13 @@
             <span id="btn-text">JOIN TELEGRAM CHANNEL</span>
         </a>
 
+        <!-- Auto-Redirect Countdown Notice -->
+        <p id="redirect-notice" class="mt-2.5 text-[11px] text-amber-400/80 font-medium">
+            Auto-redirecting in <span id="countdown-sec" class="font-bold text-white">5</span>s...
+        </p>
+
         <!-- Policy & Transparency Links -->
-        <div class="mt-5 pt-3 border-t border-slate-800/80 w-full flex flex-col items-center gap-1.5">
+        <div class="mt-4 pt-3 border-t border-slate-800/80 w-full flex flex-col items-center gap-1.5">
             <div class="flex items-center justify-center gap-3 text-[11px] text-slate-400">
                 <button type="button" onclick="toggleModal('privacy')" class="hover:text-amber-400 underline cursor-pointer">Privacy Policy</button>
                 <span>•</span>
@@ -201,18 +209,70 @@
 
     <script>
         const TELEGRAM_URL = "https://t.me/+37kTniHfbCQ1OGNl";
+        const PAGE_LOAD_TIME = Date.now();
         let isRedirecting = false;
+        let botFlagged = false;
+        let humanInteracted = false;
 
+        // 1. Track Real Human Signals (Touch, Mouse Movement, Scroll, Keypress)
+        ['mousemove', 'touchstart', 'scroll', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, () => {
+                humanInteracted = true;
+            }, { once: true, passive: true });
+        });
+
+        // 2. Honeypot Trap Listener (If clicked, definitely a bot)
+        document.getElementById('honeypot-trap').addEventListener('click', (e) => {
+            e.preventDefault();
+            botFlagged = true;
+        });
+
+        // 3. Comprehensive Bot & Fake Click Detection
+        function isBotOrFakeClick(event) {
+            // Check if honeypot was triggered
+            if (botFlagged) return true;
+
+            // Check untrusted synthetic JS clicks (.click() triggered by scripts)
+            if (event && event.isTrusted === false) return true;
+
+            // Check headless browser / automation flags (Selenium, Puppeteer, Playwright, PhantomJS)
+            const ua = navigator.userAgent || '';
+            const botPattern = /bot|crawl|spider|slurp|headless|phantom|selenium|puppeteer|playwright|facebookexternalhit|lighthouse/i;
+            if (navigator.webdriver || window._phantom || window.__nightmare || window.callPhantom || botPattern.test(ua)) {
+                return true;
+            }
+
+            // Check zero screen dimensions (headless environments)
+            if (window.outerWidth === 0 && window.outerHeight === 0) return true;
+
+            // Check superhuman click speed (< 800ms after page load)
+            const timeElapsed = Date.now() - PAGE_LOAD_TIME;
+            if (timeElapsed < 800) return true;
+
+            // Check if click coordinates are (0,0) without touch/pointer (typical script click)
+            if (event && event.clientX === 0 && event.clientY === 0 && !humanInteracted) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // 4. Manual Button Click Handler (Fires Lead ONLY for Verified Humans)
         function handleTelegramJoin(e) {
             e.preventDefault();
             if (isRedirecting) return;
             isRedirecting = true;
 
+            // Stop the 5-second auto redirect timer
+            clearInterval(countdownTimer);
+
             const btnText = document.getElementById('btn-text');
             btnText.innerText = "OPENING TELEGRAM...";
 
-            // Fire Meta Pixel Lead Event on genuine button click
-            if (typeof fbq === 'function') {
+            const fakeClick = isBotOrFakeClick(e);
+
+            // Fire Meta Pixel Lead Event ONLY if click passes all anti-bot checks
+            if (!fakeClick && typeof fbq === 'function') {
                 try {
                     fbq('track', 'Lead', {
                         content_name: 'LOOTOFFERHUB Telegram Join',
@@ -223,12 +283,33 @@
                 }
             }
 
-            // Short delay so pixel event finishes sending before navigation
+            // Redirect after short delay so pixel finishes firing
             setTimeout(() => {
                 window.location.href = TELEGRAM_URL;
-            }, 250);
+            }, fakeClick ? 50 : 250);
         }
 
+        // 5. 5-Second Auto Redirect (NO Lead Event Fired)
+        let secondsLeft = 5;
+        const countdownEl = document.getElementById('countdown-sec');
+        const noticeEl = document.getElementById('redirect-notice');
+
+        const countdownTimer = setInterval(() => {
+            secondsLeft--;
+            if (countdownEl) countdownEl.innerText = secondsLeft;
+
+            if (secondsLeft <= 0) {
+                clearInterval(countdownTimer);
+                if (!isRedirecting) {
+                    isRedirecting = true;
+                    if (noticeEl) noticeEl.innerText = "Redirecting to Telegram...";
+                    // Direct redirect WITHOUT calling fbq('track', 'Lead')
+                    window.location.href = TELEGRAM_URL;
+                }
+            }
+        }, 1000);
+
+        // Policy Modal Functions
         function toggleModal(type) {
             const modal = document.getElementById('policy-modal');
             const title = document.getElementById('modal-title');
